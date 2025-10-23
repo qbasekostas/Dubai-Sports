@@ -10,7 +10,7 @@ CHANNELS_TO_FETCH = [
     {
         "id": "DubaiSports1.ae",
         "name": "Dubai Sports 1",
-        "channel_id": "702096936067"
+        "channel_id": "702096936067" # Το ID που χρησιμοποιείται στο URL
     },
     {
         "id": "DubaiSports2.ae",
@@ -51,7 +51,7 @@ def generate_xmltv():
     for channel_info in CHANNELS_TO_FETCH:
         full_url = BASE_URL.format(channel_id=channel_info['channel_id']) + f"&byListingTime={start_ts}~{end_ts}"
         
-        print(f"Requesting data for {channel_info['name']} from {full_url}")
+        print(f"Requesting data for {channel_info['name']}")
         
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
@@ -59,10 +59,7 @@ def generate_xmltv():
             response.raise_for_status()
             data = response.json()
 
-            # >>>>> Η ΣΩΣΤΗ ΔΙΑΔΡΟΜΗ ΕΙΝΑΙ ΑΥΤΗ <<<<<
-            # Το JSON έχει ένα κλειδί "entries", που είναι μια λίστα.
-            # Παίρνουμε το πρώτο αντικείμενο [0] από αυτή τη λίστα.
-            # Μέσα εκεί, υπάρχει το κλειδί "listings" που περιέχει τα προγράμματα.
+            # >>>>> ΑΥΤΗ ΕΙΝΑΙ Η ΣΩΣΤΗ ΔΙΑΔΡΟΜΗ ΒΑΣΕΙ ΤΟΥ OUTPUT ΣΟΥ <<<<<
             listings = data.get('entries', [{}])[0].get('listings', [])
 
             if not listings:
@@ -70,6 +67,7 @@ def generate_xmltv():
                 continue
 
             for item in listings:
+                # Οι πληροφορίες του προγράμματος είναι σε ένα ένθετο dictionary
                 program_details = item.get('program', {})
                 if not program_details:
                     continue
@@ -77,14 +75,16 @@ def generate_xmltv():
                 start_time = format_time_for_xmltv(item.get('startTime'))
                 end_time = format_time_for_xmltv(item.get('endTime'))
                 title = program_details.get('title')
-                description = program_details.get('description')
+                description = program_details.get('description') # Μπορεί να είναι None
 
+                # Έλεγχος ότι έχουμε τα απαραίτητα δεδομένα
                 if not all([start_time, end_time, title]):
                     continue
 
                 prog_el = SubElement(tv_root, 'programme', start=start_time, stop=end_time, channel=channel_info["id"])
                 SubElement(prog_el, 'title', lang="en").text = title
                 
+                # Προσθήκη περιγραφής μόνο αν υπάρχει
                 if description:
                     SubElement(prog_el, 'desc', lang="en").text = description
 
