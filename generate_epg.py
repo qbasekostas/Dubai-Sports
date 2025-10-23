@@ -20,8 +20,8 @@ CHANNELS_TO_FETCH = [
     }
 ]
 
-OUTPUT_FILE = "epg.xml"
-COMPRESSED_OUTPUT_FILE = "epg.xml.gz"
+OUTPUT_FILE = "dubai.epg.xml"
+COMPRESSED_OUTPUT_FILE = "dubai.epg.xml.gz"
 
 def format_time_for_xmltv(iso_time_str):
     """Μετατρέπει την ώρα από ISO 8601 format σε XMLTV format (π.χ., 20231027180000 +0300)."""
