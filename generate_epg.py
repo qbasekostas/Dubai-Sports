@@ -6,25 +6,26 @@ from xml.dom import minidom
 from datetime import datetime, timedelta
 
 # --- Ρυθμίσεις ---
-# Τώρα τα URLs δεν έχουν το timestamp. Θα το προσθέτουμε δυναμικά.
 CHANNELS_TO_FETCH = [
     {
         "id": "DubaiSports1.ae",
         "name": "Dubai Sports 1",
-        "base_url": "https://d1vr1mlm6fadud.cloudfront.net/content/channels/702096936067?region=GR&maxParentalRatings=18&language=en&platform=web"
+        "channel_id": "702096936067"
     },
     {
         "id": "DubaiSports2.ae",
         "name": "Dubai Sports 2",
-        "base_url": "https://d1vr1mlm6fadud.cloudfront.net/content/channels/702096936079?region=GR&maxParentalRatings=18&language=en&platform=web"
+        "channel_id": "702096936079"
     }
 ]
 
+BASE_URL = "https://d1vr1mlm6fadud.cloudfront.net/content/channels/{channel_id}?region=GR&language=en&platform=web"
 OUTPUT_FILE = "dubai.epg.xml"
 COMPRESSED_OUTPUT_FILE = "dubai.epg.xml.gz"
 # --- Τέλος Ρυθμίσεων ---
 
 def format_time_for_xmltv(timestamp_ms):
+    """Μετατρέπει την ώρα από milliseconds timestamp σε XMLTV format (UTC)."""
     if not timestamp_ms:
         return ""
     dt_object = datetime.utcfromtimestamp(timestamp_ms / 1000)
@@ -32,45 +33,51 @@ def format_time_for_xmltv(timestamp_ms):
 
 def generate_xmltv():
     tv_root = Element('tv')
-    tv_root.set('source-info-name', 'Awaan EPG Grabber')
-    tv_root.set('generator-info-name', 'GitHubAction')
 
+    # 1. Προσθήκη των καναλιών στο XML
     for channel_info in CHANNELS_TO_FETCH:
         channel_el = SubElement(tv_root, 'channel', id=channel_info["id"])
         SubElement(channel_el, 'display-name', lang="en").text = channel_info["name"]
 
-    # >>>>> ΝΕΑ ΠΡΟΣΘΗΚΗ: Υπολογισμός δυναμικού χρονικού εύρους <<<<<
+    # 2. Υπολογισμός δυναμικού χρονικού εύρους (π.χ., για τις επόμενες 4 ημέρες)
     now = datetime.now()
-    end_date = now + timedelta(days=3) # Παίρνουμε πρόγραμμα για τις επόμενες 3 ημέρες
-    
-    # Μετατροπή σε millisecond timestamp
+    end_date = now + timedelta(days=4)
     start_ts = int(now.timestamp() * 1000)
     end_ts = int(end_date.timestamp() * 1000)
+    
+    print(f"Fetching EPG data for the range: {now.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 
-    print(f"Fetching EPG data from {now.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-
+    # 3. Προσθήκη των προγραμμάτων για κάθε κανάλι
     for channel_info in CHANNELS_TO_FETCH:
-        # >>>>> ΝΕΑ ΠΡΟΣΘΗΚΗ: Δημιουργία του πλήρους URL με τα νέα timestamps <<<<<
-        full_url = f"{channel_info['base_url']}&byListingTime={start_ts}~{end_ts}"
+        full_url = BASE_URL.format(channel_id=channel_info['channel_id']) + f"&byListingTime={start_ts}~{end_ts}"
         
-        print(f"Fetching EPG for {channel_info['name']} from {full_url}")
+        print(f"Requesting data for {channel_info['name']} from {full_url}")
+        
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(full_url, timeout=15, headers=headers)
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            response = requests.get(full_url, timeout=20, headers=headers)
             response.raise_for_status()
-            
-            initial_data = response.json()
-            json_string = initial_data.get('data')
-            listings = json.loads(json_string)
+            data = response.json()
 
-            if not isinstance(listings, list):
-                 print(f"Error: Parsed data for {channel_info['name']} is not a list.")
-                 continue
+            # >>>>> Η ΣΩΣΤΗ ΔΙΑΔΡΟΜΗ ΕΙΝΑΙ ΑΥΤΗ <<<<<
+            # Το JSON έχει ένα κλειδί "entries", που είναι μια λίστα.
+            # Παίρνουμε το πρώτο αντικείμενο [0] από αυτή τη λίστα.
+            # Μέσα εκεί, υπάρχει το κλειδί "listings" που περιέχει τα προγράμματα.
+            listings = data.get('entries', [{}])[0].get('listings', [])
 
-            for program in listings:
-                start_time = format_time_for_xmltv(program.get('listingStartTime'))
-                end_time = format_time_for_xmltv(program.get('listingEndTime'))
-                title = program.get('title')
+            if not listings:
+                print(f"Warning: No listings found for {channel_info['name']}.")
+                continue
+
+            for item in listings:
+                program_details = item.get('program', {})
+                if not program_details:
+                    continue
+
+                start_time = format_time_for_xmltv(item.get('startTime'))
+                end_time = format_time_for_xmltv(item.get('endTime'))
+                title = program_details.get('title')
+                description = program_details.get('description')
 
                 if not all([start_time, end_time, title]):
                     continue
@@ -78,15 +85,15 @@ def generate_xmltv():
                 prog_el = SubElement(tv_root, 'programme', start=start_time, stop=end_time, channel=channel_info["id"])
                 SubElement(prog_el, 'title', lang="en").text = title
                 
-                description = program.get('shortDescription') or program.get('longDescription')
                 if description:
                     SubElement(prog_el, 'desc', lang="en").text = description
 
         except requests.exceptions.RequestException as e:
             print(f"Error fetching data for {channel_info['name']}: {e}")
-        except (json.JSONDecodeError, TypeError) as e:
-            print(f"Error parsing JSON for {channel_info['name']}: {e}")
-    
+        except (json.JSONDecodeError, IndexError) as e:
+            print(f"Error parsing JSON or unexpected structure for {channel_info['name']}: {e}")
+
+    # 4. Αποθήκευση και συμπίεση
     xml_str = tostring(tv_root, 'utf-8')
     pretty_xml_str = minidom.parseString(xml_str).toprettyxml(indent="  ", encoding='utf-8')
 
