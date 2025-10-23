@@ -1,0 +1,46 @@
+name: Generate EPG XMLTV File
+
+# Αυτό καθορίζει πότε θα τρέχει η action
+on:
+  # Επιτρέπει να το τρέξετε χειροκίνητα από την καρτέλα Actions στο GitHub
+  workflow_dispatch:
+  # Το τρέχει αυτόματα σύμφωνα με ένα πρόγραμμα (schedule)
+  schedule:
+    # Τρέχει κάθε 6 ώρες. Η σύνταξη είναι cron.
+    - cron: '0 */6 * * *'
+
+jobs:
+  build-epg:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Κατεβάζει τον κώδικα του repository στον server που θα τρέξει η action
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Εγκαθιστά την Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # 3. Εγκαθιστά τις απαραίτητες βιβλιοθήκες (σε αυτή την περίπτωση, μόνο την 'requests')
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      # 4. Εκτελεί το Python script μας για να δημιουργήσει το epg.xml.gz
+      - name: Run EPG generator script
+        run: python generate_epg.py
+
+      # 5. Κάνει commit και push το νέο αρχείο epg.xml.gz πίσω στο repository
+      - name: Commit and push EPG file
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Automated EPG update"
+          file_pattern: epg.xml.gz
+          # Προαιρετικό: δώστε τα στοιχεία σας για το commit
+          commit_user_name: "GitHub Actions Bot"
+          commit_user_email: "actions@github.com"
+          commit_author: "GitHub Actions Bot <actions@github.com>"
